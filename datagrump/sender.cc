@@ -72,7 +72,7 @@ DatagrumpSender::DatagrumpSender( const char * const host,
   /* connect socket to the remote host */
   /* (note: this doesn't send anything; it just tags the socket
      locally with the remote address */
-  socket_.connect( Address( host, port ) );  
+  socket_.connect( Address( host, port ) );
 
   cerr << "Sending to " << socket_.peer_address().to_string() << endl;
 }
@@ -148,6 +148,7 @@ int DatagrumpSender::loop( void )
       return ret.exit_status;
     } else if ( ret.result == PollResult::Timeout ) {
       /* After a timeout, send one datagram to try to get things moving again */
+      //controller_.timeout_occurred();
       send_datagram();
     }
   }

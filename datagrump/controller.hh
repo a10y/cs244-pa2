@@ -10,7 +10,9 @@ class Controller
 private:
   bool debug_; /* Enables debugging output */
 
-  /* Add member variables here */
+  double the_window_size;
+  double rtt_ewma;
+  unsigned int grace_end;
 
 public:
   /* Public interface for the congestion controller */
@@ -32,6 +34,8 @@ public:
 		     const uint64_t send_timestamp_acked,
 		     const uint64_t recv_timestamp_acked,
 		     const uint64_t timestamp_ack_received );
+
+  void timeout_occurred(void);
 
   /* How long to wait (in milliseconds) if there are no acks
      before sending one more datagram */
