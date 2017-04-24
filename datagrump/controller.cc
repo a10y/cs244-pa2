@@ -7,15 +7,22 @@ using namespace std;
 
 #define DEBUG(X) if (debug_) { cerr << X << endl; }
 
-const static unsigned int kDelayThresh = 100;
+// const static unsigned int kDelayThresh = 100;
 const static double kGamma = 0.15;
-const static double kWindowDecay = 0.5;
+const static double kWindowDecay = 0.6;
+const static double kWindowGrow = 1.4;
+const static unsigned int kGraceMillis = 200;
+const static unsigned int kMinWindowSize = 10;
 
-const static unsigned int kGraceMillis = 250;
+const static unsigned int kMaxRTT = 100;
+const static unsigned int kMinRTT = 75;
+
+
+// const static unsigned int kWindowSizeRTTProduct = 1000;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
-  : debug_( debug ), the_window_size( 10.0 ), rtt_ewma ( 0.0 ), grace_end( 0 )
+  : debug_( debug ), the_window_size( kMinWindowSize ), rtt_ewma ( 0.0 ), grace_end( 0 )
 {}
 
 /* Get current window size, in datagrams */
@@ -54,15 +61,32 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
   unsigned int delta = timestamp_ack_received - send_timestamp_acked;
 
   rtt_ewma = kGamma*delta + (1.0 - kGamma)*rtt_ewma;
+  // the_window_size = max((double) kMinWindowSize, kWindowSizeRTTProduct / rtt_ewma);
+  cerr << delta << endl;
 
   if (timestamp_ack_received < grace_end) {
+    // do nothing
+  } else if (rtt_ewma >= double(kMaxRTT)) {
+    the_window_size *= kWindowDecay;
+    grace_end = timestamp_ack_received + kGraceMillis;
+  } else if (rtt_ewma <= double(kMinRTT)) {
+    the_window_size *= kWindowGrow;
+    grace_end = timestamp_ack_received + kGraceMillis;
+  }
+
+  if (the_window_size < double(kMinWindowSize)) {
+    the_window_size = kMinWindowSize;
+    grace_end = timestamp_ack_received + kGraceMillis;
+  }
+
+  /*if (timestamp_ack_received < grace_end) {
     // do nothing
   } else if (rtt_ewma >= double(kDelayThresh)) {
     the_window_size *= kWindowDecay;
     grace_end = timestamp_ack_received + kGraceMillis;
   } else {
     the_window_size += 1.0 / the_window_size;
-  }
+    }*/
 
 
   if ( debug_ ) {
