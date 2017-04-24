@@ -3,14 +3,21 @@
 
 #include <cstdint>
 
-/* Congestion controller interface */
-
 class Controller
 {
 private:
-  bool debug_; /* Enables debugging output */
+  bool debug_; // Enables debugging output
 
-  double the_window_size;
+  // parameters for estimating the RTTprop
+  unsigned int est_rtt_prop_; // Estimate of RTT for propagation (no queueing delay)
+
+
+  // parameters for estimating delivery rate
+  unsigned int interval_start_;
+  unsigned int interval_pkts_recv_;
+  double est_deliv_rate_;
+  double max_deliv_rate_;
+
 
 public:
   /* Public interface for the congestion controller */

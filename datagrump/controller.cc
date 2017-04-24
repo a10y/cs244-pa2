@@ -6,68 +6,36 @@
 
 using namespace std;
 
-#define DEBUG(X) if (debug_) { cerr << X << endl; }
-#define UNUSED(x) ((void)x)
-
-/*
-Perform simple proportional control w.r.t. queueing delay to determine the necessary output for things.
-*/
-
-const static double kGamma = 0.15;
-const static double kWindowDecay = 0.6;
-const static double kWindowGrow = 1.4;
-
-const static auto kMinWindow = 5.0;
-const static auto kMaxWindow = 100.0; // This is probably a safe assumption
-
-const auto kTargetQDelay = 0.0; // Minimize queueing delay
-const static double kProp = 0.0006;
-
-// Estimated RTTprop
-static auto est_rtt_prop = 0.0;
-
-// Min over kRTTWin last RTT's
-const static auto kRTTWin = 15;
-static vector<int> window;
-
-static int outstandingPkts = 0;
+#define DEBUG(x) ({if (debug_) { cerr << x << endl; }})
+#define UNUSED(...) ((void)__VA_ARGS__)
 
 
-const static auto kDelayWin = 40;
-static vector<double> q_delay_window;
+// Initial cwnd and RTTprop
+const static auto kInitCwnd = 10.0;
+const static auto kInitRTT = 100;
 
-template<typename T>
-static T min_vec(vector<T> myVec) {
-  T min = myVec[0];
-  for (auto &v : myVec) {
-    if (v < min) min = v;
-  }
-  return min;
-}
+// How many RTT's must pass before something is considered "timed out"
+const static auto kTimeoutFactor = 4.0;
 
-template<typename T>
-static double avg_vec(vector<T> myVec) {
-  double sum = 0.0;
-  for (auto v : myVec) {
-    sum += v;
-  }
-  return sum / myVec.size();
-}
+// Length of an interval in MS
+const static auto kIntervalLength = 1000;
+
+const static auto kCwndGain = 1.0;
 
 /* Default constructor */
 Controller::Controller( const bool debug )
-  : debug_( debug ), the_window_size( 20.0 )
-{}
+  : debug_( debug ),
+    est_rtt_prop_(kInitRTT),
+    interval_start_(0),
+    interval_pkts_recv_(0),
+    est_deliv_rate_(0.01),
+    max_deliv_rate_(0.0)
+{
+}
 
 /* Get current window size, in datagrams */
 unsigned int Controller::window_size( void ) {
-
-  //if ( debug_ ) {
-  //  cerr << "At time " << timestamp_ms()
-  //       << " window size is " << the_window_size << endl;
-  //}
-
-  return int(the_window_size);
+  return kCwndGain * est_rtt_prop_ * est_deliv_rate_;
 }
 
 /* A datagram was sent */
@@ -76,15 +44,25 @@ void Controller::datagram_was_sent( const uint64_t sequence_number,
 				    const uint64_t send_timestamp )
                                     /* in milliseconds */
 {
-  // On sending of a datagram, increment the amount of outstanding data in the network.
-  //if ( debug_ ) {
-  //  cerr << "At time " << send_timestamp
-  //       << " sent datagram " << sequence_number
-  //       << " the_window_size=" << the_window_size << endl;
-  //}
   UNUSED(sequence_number);
   UNUSED(send_timestamp);
-  outstandingPkts++;
+
+  if (debug_) {
+    cerr
+      << "Sent datagram"
+      << "\t seqno=" << sequence_number
+      << "\t est_rtt=" << est_rtt_prop_
+      << "\t est_deliv=" << est_deliv_rate_
+      << endl;
+  }
+
+  // See if we should begin a new interval here
+  auto now = timestamp_ms();
+  if (now > interval_start_ + kIntervalLength) {
+    interval_start_ = now;
+    interval_pkts_recv_ = 0;
+    max_deliv_rate_ = 0.0;
+  }
 }
 
 /* An ack was received */
@@ -97,45 +75,28 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
 			       const uint64_t timestamp_ack_received )
                                /* when the ack was received (by sender) */
 {
-
   UNUSED(recv_timestamp_acked);
   UNUSED(sequence_number_acked);
+  UNUSED(send_timestamp_acked);
+  UNUSED(timestamp_ack_received);
 
-  // Decrement number of outstanding packets
-  // TODO: figure out how to use # of outstanding packets for something useful.
-  outstandingPkts--;
+  // Update information about current interval for delivery rate estimate
+  interval_pkts_recv_++;
+  auto now = timestamp_ms();
+  auto time_since_interval_start = now - interval_start_;
+  auto deliv_rate = double(interval_pkts_recv_) / time_since_interval_start;
+  est_deliv_rate_ = max(deliv_rate, max_deliv_rate_);
 
-  // RTT estimation
-  auto rtt_new = timestamp_ack_received - send_timestamp_acked;
-
-  window.push_back(rtt_new);
-  if (window.size() > kRTTWin) {
-    window.erase(window.begin());
-  }
-  auto rtt_prop_est = min_vec(window);
-
-  est_rtt_prop = (1 - kGamma)*est_rtt_prop + kGamma*rtt_prop_est;
-
-  // Queueing delay estimation is based on our currently estimated rtt_prop plus total rtt
-  // smoothed average queueing delay
-  auto q_delay = rtt_new - est_rtt_prop;
-  q_delay_window.push_back(q_delay);
-  if (q_delay_window.size() > kDelayWin) {
-    q_delay_window.erase(q_delay_window.begin());
-  }
-  auto q_delay_avg = avg_vec(q_delay_window);
-  double delta_q_delay = q_delay_avg - q_delay;
-
-  // If q_delay goes up, then we want to decrease our window, otherwise if it goes down increase the window.
-  the_window_size += kProp * delta_q_delay;
-  the_window_size = min(max(kMinWindow, the_window_size), kMaxWindow);
+  unsigned int rtt_new = timestamp_ack_received - send_timestamp_acked;
+  cerr << "rtt_new=" << rtt_new << "\t" << "est_rtt=" << est_rtt_prop_ << endl;
+  est_rtt_prop_ = min(est_rtt_prop_, rtt_new);
 
   if ( debug_ ) {
-    cerr << "At time " << timestamp_ack_received
-         << "\tdelta_q_delay=" << delta_q_delay
-         << "\test_rtt_prop=" << est_rtt_prop
-         << "\twindow=" << the_window_size
-	 << endl;
+    cerr
+      << "Received seq=" << sequence_number_acked
+      << "\t est_rtt_prop_=" << est_rtt_prop_
+      << "\t est_deliv_rate_=" << est_deliv_rate_
+      << endl;
   }
 }
 
@@ -143,6 +104,5 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
    before sending one more datagram */
 unsigned int Controller::timeout_ms( void )
 {
-  // Assume packets should arrive within 2 RTT's
-  return int(2 * est_rtt_prop);
+  return kTimeoutFactor*est_rtt_prop_;
 }
