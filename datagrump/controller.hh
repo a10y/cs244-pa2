@@ -5,6 +5,9 @@
 
 /* Congestion controller interface */
 
+#define NUM_TIMESTAMPS 3
+#define INTERVAL_LEN 3
+
 class Controller
 {
 private:
@@ -13,6 +16,8 @@ private:
   double the_window_size;
   double rtt_ewma;
   unsigned int grace_end;
+
+  unsigned int rtt[NUM_TIMESTAMPS * INTERVAL_LEN];
 
 public:
   /* Public interface for the congestion controller */
@@ -28,6 +33,8 @@ public:
   /* A datagram was sent */
   void datagram_was_sent( const uint64_t sequence_number,
 			  const uint64_t send_timestamp );
+
+  double interpolate( void );
 
   /* An ack was received */
   void ack_received( const uint64_t sequence_number_acked,
