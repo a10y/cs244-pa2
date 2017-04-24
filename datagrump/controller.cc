@@ -9,8 +9,7 @@ using namespace std;
 
 const static unsigned int kDelayThresh = 100;
 const static double kGamma = 0.15;
-const static double kWindowDecay = 0.6;
-const static double kWindowIncrease = 0.333;
+const static double kWindowDecay = 0.5;
 
 const static unsigned int kGraceMillis = 250;
 
@@ -62,7 +61,7 @@ void Controller::ack_received( const uint64_t sequence_number_acked,
     the_window_size *= kWindowDecay;
     grace_end = timestamp_ack_received + kGraceMillis;
   } else {
-    the_window_size += kWindowIncrease;
+    the_window_size += 1.0 / the_window_size;
   }
 
 
