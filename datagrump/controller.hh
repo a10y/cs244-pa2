@@ -3,20 +3,46 @@
 
 #include <cstdint>
 
+// Filter for different window statistics.
+class Filter
+{
+private
+:
+  double min_ = -1.0;
+  double max_ = -1.0;
+  double ewma_ = 0.0;
+  double gamma_;
+public:
+  Filter(double gamma) : gamma_(gamma) {}
+  void observe(double measurement) {
+    ewma_ = gamma_*measurement + (1.0-gamma_)*ewma_;
+    if (min_ < 0.0) {
+      min_ = measurement;
+    } else {
+      min_ = std::min(min_, measurement);
+    }
+    max_ = std::max(max_, measurement);
+  }
+  double min() {
+    return min_;
+  }
+  double max() {
+    return max_;
+  }
+  double ewma() {
+    return ewma_;
+  }
+  void clear() {
+    ewma_ = 0.0;
+    min_ = -1.0;
+    max_ = -1.0;
+  }
+};
+
 class Controller
 {
 private:
   bool debug_; // Enables debugging output
-
-  // parameters for estimating the RTTprop
-  unsigned int est_rtt_prop_; // Estimate of RTT for propagation (no queueing delay)
-
-
-  // parameters for estimating delivery rate
-  unsigned int interval_start_;
-  unsigned int interval_pkts_recv_;
-  double est_deliv_rate_;
-  double max_deliv_rate_;
 
 
 public:
