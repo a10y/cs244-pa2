@@ -15,7 +15,7 @@ const static unsigned int kGraceMillis = 50;
 const static unsigned int kMinWindowSize = 4;
 
 const static unsigned int kMaxRTT = 100;
-const static unsigned int kMinRTT = 75;
+const static unsigned int kMinRTT = 50;
 
 // const static unsigned int kWindowSizeRTTProduct = 1000;
 
